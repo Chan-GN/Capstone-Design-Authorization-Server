@@ -15,7 +15,6 @@ import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -64,7 +63,7 @@ public class SecurityConfig {
                 .oidc(Customizer.withDefaults()); // OpenID Connect
 
         http
-                .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt) // userinfo 엔드포인트를 위해
+                .oauth2ResourceServer((resourceServer) -> resourceServer.jwt(Customizer.withDefaults())) // userinfo 엔드포인트를 위해
                 .exceptionHandling((exceptions) -> exceptions // 에러 발생 시, Login 페이지로 이동
                         .defaultAuthenticationEntryPointFor(
                                 new LoginUrlAuthenticationEntryPoint("/login"),
@@ -83,13 +82,14 @@ public class SecurityConfig {
         corsCustomizer.corsCustomizer(http);
 
         http
-                .authorizeHttpRequests()
-                .requestMatchers("/profile_image/**").permitAll() // 프로필 이미지 접근 허용
-                .anyRequest().authenticated()
-                .and()
-                .formLogin()
-                .loginPage("/login")
-                .permitAll();
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/profile_image/**").permitAll() // 프로필 이미지 접근 허용
+                        .anyRequest().authenticated()
+                )
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .permitAll()
+                );
 
 
         return http.build();
@@ -110,24 +110,32 @@ public class SecurityConfig {
     // key pair 여러개 정의해서 Rotation 하는 것이 좋음
     @Bean
     public JWKSource<SecurityContext> jwkSource() throws Exception {
-        KeyPairGenerator kg = KeyPairGenerator.getInstance("RSA"); // RSA Algorithm
-        kg.initialize(2048);
-        KeyPair keyPair = kg.generateKeyPair();
+        KeyPair keyPair = generateRsaKey();
 
-        RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic(); // public key, 공개 키
-        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate(); // private key, 개인 키
+        RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
 
-        RSAKey key = new RSAKey.Builder(publicKey)
+        RSAKey rsaKey = new RSAKey.Builder(publicKey)
                 .privateKey(privateKey)
                 .keyID(UUID.randomUUID().toString())
                 .build();
+        JWKSet jwkSet = new JWKSet(rsaKey);
 
-        JWKSet set = new JWKSet(key);
-
-        return new ImmutableJWKSet<>(set);
+        return new ImmutableJWKSet<>(jwkSet);
     }
 
-    // userinfo 엔드포인트를 위해
+    private KeyPair generateRsaKey() {
+        KeyPair keyPair;
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(2048);
+            keyPair = keyPairGenerator.generateKeyPair();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        return keyPair;
+    }
+
     @Bean
     public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
         return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
@@ -181,6 +189,7 @@ public class SecurityConfig {
                 throw new OAuth2AuthorizationCodeRequestAuthenticationException(error, null);
             }
         }
+
     }
 
 }

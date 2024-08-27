@@ -78,9 +78,11 @@ public class Client {
     }
 
     public static RegisteredClient from(Client client) {
-        Consumer<Set<AuthorizationGrantType>> grantTypes = authorizationGrantTypes -> client.getGrantTypes().forEach(grantType ->
-                authorizationGrantTypes.add(new AuthorizationGrantType(grantType.getGrantType()))
-        );
+        Consumer<Set<AuthorizationGrantType>> grantTypes = authorizationGrantTypes -> {
+            client.getGrantTypes().forEach(grantType ->
+                    authorizationGrantTypes.add(new AuthorizationGrantType(grantType.getGrantType()))
+            );
+        };
 
         return RegisteredClient.withId(String.valueOf(client.getId()))
                 .clientId(client.getClientId())
